@@ -30,6 +30,7 @@ import edu.berkeley.sparrow.thrift.FrontendService.AsyncClient.frontendMessage_c
 import edu.berkeley.sparrow.thrift.InternalService;
 import edu.berkeley.sparrow.thrift.InternalService.AsyncClient.launchTask_call;
 import edu.berkeley.sparrow.thrift.TFullTaskId;
+import edu.berkeley.sparrow.thrift.TPlacementPreference;
 import edu.berkeley.sparrow.thrift.TSchedulingRequest;
 import edu.berkeley.sparrow.thrift.TTaskPlacement;
 import edu.berkeley.sparrow.thrift.TTaskSpec;
@@ -144,7 +145,89 @@ public class Scheduler {
     return state.watchApplication(appId);
   }
 
+  /** This is a special case where we want to ensure a very specific scheduling allocation.*/
+  private boolean isSpecialCase(TSchedulingRequest req) {
+    final int specialSize = 2;
+    if (req.getTasks().size() != specialSize) {
+      return false;
+    }
+    for (TTaskSpec t: req.getTasks()) {
+      if ((t.getPreference().getNodes() != null)  &&
+          (t.getPreference().getNodes().size() != 0)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** Handles special case. */
+  private boolean handleSpecialCase(TSchedulingRequest req) throws TException {
+    LOG.info("Handling special case request");
+    final int specialSize = 2;
+
+    // No tasks have preferences and we have the magic number of tasks
+    TSchedulingRequest req1 = new TSchedulingRequest();
+    req1.user = req.user;
+    req1.app = req.app;
+    req1.schedulingPref = req.schedulingPref;
+    TSchedulingRequest req2 = new TSchedulingRequest();
+    req2.user = req.user;
+    req2.app = req.app;
+    req2.schedulingPref = req.schedulingPref;
+    TSchedulingRequest req3 = new TSchedulingRequest();
+    req3.user = req.user;
+    req3.app = req.app;
+    req3.schedulingPref = req.schedulingPref;
+
+    List<InetSocketAddress> backends = new ArrayList<InetSocketAddress>();
+    for (InetSocketAddress backend : state.getBackends(req.app).keySet()) {
+      backends.add(backend);
+    }
+
+    if (!(backends.size() >= (specialSize * 3))) {
+      LOG.error("Special case expects at least three times as many machines as tasks.");
+      return false;
+    }
+    LOG.info(backends);
+    for (int i = 0; i < backends.size(); i++) {
+      int taskIndex = i / 3;
+      if (taskIndex > req.getTasksSize() - 1) { break; }
+
+      TTaskSpec task = req.getTasks().get(i / 3);
+      // Create three copies of this task each on a different backend
+      TTaskSpec task1 = new TTaskSpec();
+      task1.estimatedResources = task.estimatedResources;
+      task1.message = task.message;
+      task1.taskID = task.taskID;
+      task1.preference = new TPlacementPreference();
+      task1.preference.addToNodes(backends.get(i).getHostName());
+      req1.addToTasks(task1);
+      i++;
+
+      TTaskSpec task2 = new TTaskSpec();
+      task2.estimatedResources = task.estimatedResources;
+      task2.message = task.message;
+      task2.taskID = task.taskID;
+      task2.preference = new TPlacementPreference();
+      task2.preference.addToNodes(backends.get(i).getHostName());
+      req2.addToTasks(task2);
+      i++;
+
+      TTaskSpec task3 = new TTaskSpec();
+      task3.estimatedResources = task.estimatedResources;
+      task3.message = task.message;
+      task3.taskID = task.taskID;
+      task3.preference = new TPlacementPreference();
+      task3.preference.addToNodes(backends.get(i).getHostName());
+      req3.addToTasks(task3);
+    }
+    LOG.info("Three requests: " + req1 + req2 + req3);
+    return submitJob(req1) && submitJob(req2) && submitJob(req3);
+  }
+
   public boolean submitJob(TSchedulingRequest req) throws TException {
+    if (isSpecialCase(req)) { return handleSpecialCase(req); }
+
     LOG.debug(Logging.functionCall(req));
     long start = System.currentTimeMillis();
 
