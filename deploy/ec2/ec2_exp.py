@@ -237,9 +237,12 @@ def find_existing_cluster(conn, opts):
 
 # Deploy Sparrow binaries and configuration on a launched cluster
 def deploy_cluster(frontends, backends, opts, warmup_job_arrival_s=0, warmup_s=0,
-                   post_warmup_s=0):
+                   post_warmup_s=0, num_users=1):
   # Replace template vars
   tmp_dir = tempfile.mkdtemp()
+  num_task_scheduler = "fifo"
+  if num_users > 1:
+      nm_task_scheduler = "round_robin"
 
   template_vars = {
     "static_frontends": ",".join(["%s:12345" % i.public_dns_name \
@@ -264,7 +267,9 @@ def deploy_cluster(frontends, backends, opts, warmup_job_arrival_s=0, warmup_s=0
     "sample_ratio_constrained": "%s" % opts.sample_ratio_constrained,
     "warmup_job_arrival_rate_s": "%s" % warmup_job_arrival_s,
     "warmup_s": "%s" % warmup_s,
-    "post_warmup_s": "%s" % post_warmup_s
+    "post_warmup_s": "%s" % post_warmup_s,
+    "node_monitor_task_scheduler": "%s" % nm_task_scheduler,
+    "num_users": "%s" % num_users,
   }
   for filename in os.listdir("template"):
     if filename[0] not in '#.~' and filename[-1] != '~':

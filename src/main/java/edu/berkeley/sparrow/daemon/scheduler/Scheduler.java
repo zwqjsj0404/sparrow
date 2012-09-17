@@ -160,7 +160,8 @@ public class Scheduler {
     // machine.
     AUDIT_LOG.info(Logging.auditEventString("arrived", requestId,
                                             request.getTasks().size(),
-                                            address.getHost(), address.getPort()));
+                                            address.getHost(), address.getPort(),
+                                            request.getUser().getUser()));
 
     String app = request.getApp();
     List<TTaskSpec> tasks = request.getTasks();
