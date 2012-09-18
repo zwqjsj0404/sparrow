@@ -24,6 +24,8 @@ import edu.berkeley.sparrow.thrift.BackendService;
 import edu.berkeley.sparrow.thrift.GetTaskService;
 import edu.berkeley.sparrow.thrift.GetTaskService.AsyncClient;
 import edu.berkeley.sparrow.thrift.GetTaskService.AsyncClient.getTask_call;
+import edu.berkeley.sparrow.thrift.PongService.AsyncClient.ping_call;
+import edu.berkeley.sparrow.thrift.PongService;
 import edu.berkeley.sparrow.thrift.TFullTaskId;
 import edu.berkeley.sparrow.thrift.THostPort;
 import edu.berkeley.sparrow.thrift.TTaskLaunchSpec;
@@ -48,6 +50,10 @@ public class TaskLauncherService {
       new ThriftClientPool<GetTaskService.AsyncClient>(
           new ThriftClientPool.GetTaskServiceMakerFactory());
 
+  private static ThriftClientPool<PongService.AsyncClient> pongClientPool =
+      new ThriftClientPool<PongService.AsyncClient>(
+          new ThriftClientPool.PongServiceMakerFactory());
+
   private THostPort nodeMonitorInternalAddress;
 
   private TaskScheduler scheduler;
@@ -68,11 +74,14 @@ public class TaskLauncherService {
 
         // Request the task specification from the scheduler.
         GetTaskService.AsyncClient getTaskClient;
+        PongService.AsyncClient pongClient;
         InetSocketAddress newAddress = new InetSocketAddress(
             task.schedulerAddress.getHostName(), SchedulerThrift.DEFAULT_GET_TASK_PORT);
+        InetSocketAddress pongAddress = new InetSocketAddress(
+            task.schedulerAddress.getHostName(), 12345);
         try {
-          getTaskClient = getTaskClientPool.borrowClient(
-              newAddress);
+          getTaskClient = getTaskClientPool.borrowClient(newAddress);
+          pongClient = pongClientPool.borrowClient(pongAddress);
         } catch (Exception e) {
           LOG.fatal("Unable to create client to contact scheduler at " +
               newAddress.toString() + ":" + e);
@@ -84,7 +93,8 @@ public class TaskLauncherService {
           AUDIT_LOG.debug(Logging.auditEventString("node_monitor_get_task", task.requestId,
                                                    nodeMonitorInternalAddress.getHost()));
           getTaskClient.getTask(task.requestId, nodeMonitorInternalAddress,
-                                  new GetTaskCallback(task, newAddress));
+                                  new GetTaskCallback(task, newAddress, System.nanoTime()));
+          pongClient.ping("PING", new PongCallback(pongAddress, System.nanoTime()));
         } catch (TException e) {
           LOG.error("Unable to getTask() from scheduler at " +
               newAddress.toString() + ":" + e);
@@ -96,15 +106,17 @@ public class TaskLauncherService {
   private class GetTaskCallback implements AsyncMethodCallback<getTask_call> {
     private TaskReservation taskReservation;
     private InetSocketAddress getTaskAddress;
+    private Long t0;
 
-    public GetTaskCallback(TaskReservation taskReservation, InetSocketAddress getTaskAddress) {
+    public GetTaskCallback(TaskReservation taskReservation, InetSocketAddress getTaskAddress,
+        Long t0) {
       this.taskReservation = taskReservation;
       this.getTaskAddress = getTaskAddress;
+      this.t0 = t0;
     }
 
     @Override
     public void onComplete(getTask_call response) {
-      Long t0 = System.currentTimeMillis();
       LOG.debug(Logging.functionCall(response));
       try {
         getTaskClientPool.returnClient(getTaskAddress, (AsyncClient) response.getClient());
@@ -179,7 +191,7 @@ public class TaskLauncherService {
 
       LOG.debug("Launched task " + taskId.taskId + " for request " + taskReservation.requestId +
                 " on application backend at system time " + System.currentTimeMillis());
-      System.out.println("Took: " + (System.currentTimeMillis() - t0));
+      System.out.println("Gettask took: " + (System.nanoTime() - t0) / (1000.0 * 1000.0) + "ms");
     }
 
     @Override
@@ -219,5 +231,27 @@ public class TaskLauncherService {
     backendClients.put(backendAddr, clients);
   }
 
+  private class PongCallback implements AsyncMethodCallback<ping_call> {
+    private InetSocketAddress address;
+    private Long t0;
+
+    PongCallback(InetSocketAddress address, Long t0) { this.address = address; this.t0 = t0; }
+
+    @Override
+    public void onComplete(ping_call response) {
+      try {
+        pongClientPool.returnClient(address, (PongService.AsyncClient) response.getClient());
+        System.out.println("Ping took: " + (System.nanoTime() - t0) / (1000.0 * 1000.0) + "ms");
+      } catch (Exception e) {
+        System.out.println("ERROR!!!");
+      }
+    }
+
+    @Override
+    public void onError(Exception exception) {
+      System.out.println("ERROR!!!");
+    }
+
+  }
 
 }
