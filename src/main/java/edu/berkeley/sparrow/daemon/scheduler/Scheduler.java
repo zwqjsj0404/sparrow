@@ -311,6 +311,8 @@ public class Scheduler {
                 taskLaunchSpecs.toString());
       return Lists.newArrayList();
     } else if (taskLaunchSpecs.size() == 1) {
+      LOG.debug("Assigning task with limit: " + taskLaunchSpecs.get(0).message.limit());
+      LOG.debug("Assigning task with position: " + taskLaunchSpecs.get(0).message.position());
       AUDIT_LOG.info(Logging.auditEventString("scheduler_assigned_task", requestId,
           taskLaunchSpecs.get(0).taskId,
           nodeMonitorAddress.getHost()));
