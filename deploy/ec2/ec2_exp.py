@@ -240,7 +240,7 @@ def deploy_cluster(frontends, backends, opts, warmup_job_arrival_s=0, warmup_s=0
                    post_warmup_s=0, num_users=1):
   # Replace template vars
   tmp_dir = tempfile.mkdtemp()
-  num_task_scheduler = "fifo"
+  nm_task_scheduler = "fifo"
   if num_users > 1:
       nm_task_scheduler = "round_robin"
 

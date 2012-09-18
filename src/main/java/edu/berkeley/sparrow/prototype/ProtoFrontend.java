@@ -251,7 +251,12 @@ public class ProtoFrontend implements FrontendService.Iface {
         LOG.warn("Lanching task after start time in generated workload.");
       }
       Thread.sleep(toWait);
-      String user = "user" + r.nextInt(numUsers);
+      // Last user twice as likely to launch tasks.
+      int userId = r.nextInt(numUsers + 3);
+      if (userId >= numUsers) {
+        userId = numUsers - 1;
+      }
+      String user = "user" + userId;
       Runnable runnable =  new JobLaunchRunnable(
           generateJob(tasksPerJob, numPreferredNodes, backends, benchmarkId,
                       benchmarkIterations),
